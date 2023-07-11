@@ -1,6 +1,16 @@
 import Image from "next/image";
 import { useEffect, useRef } from "react";
 import { Wallets } from "~/types/type";
+import "@btckit/types";
+import { BtcAddress } from "@btckit/types";
+import { useDispatch } from "react-redux";
+import { walletConnect } from "./walletConnectSlice";
+import {
+  type GetAddressOptions,
+  AddressPurposes,
+  getAddress,
+  type GetAddressResponse,
+} from "sats-connect";
 
 const WalletConnectModal = ({
   setModalVisible,
@@ -8,6 +18,7 @@ const WalletConnectModal = ({
   setModalVisible: React.Dispatch<React.SetStateAction<boolean>>;
 }) => {
   const wrappedRef = useRef<HTMLDivElement>(null);
+  const dispatch = useDispatch();
 
   const handleClickOutside = (event: MouseEvent) => {
     if (
@@ -21,6 +32,62 @@ const WalletConnectModal = ({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  const walletConnectBtnClicked = async (walletName: string) => {
+    if (walletName === "Hiro") {
+      try {
+        const addressesRes = await window.btc?.request("getAddresses", {
+          types: ["p2tr"],
+        });
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-call
+        const { address } = (addressesRes as any).result.addresses.find(
+          (address: BtcAddress) => address.type === "p2tr"
+        );
+        dispatch(walletConnect({ address, walletName: "Hiro" }));
+        setModalVisible(false);
+      } catch (err) {
+        alert("Wallet is not installed or User canceled");
+      }
+    } else if (walletName === "Xverse") {
+      try {
+        const getAddressOptions: GetAddressOptions = {
+          payload: {
+            purposes: [AddressPurposes.ORDINALS],
+            message: "Address for receiving Ordinals",
+            network: {
+              type: "Mainnet",
+            },
+          },
+          onFinish: (response: GetAddressResponse) => {
+            const address = (response as any).addresses[0].address;
+            dispatch(walletConnect({ address, walletName: "Xverse" }));
+            setModalVisible(false);
+          },
+          onCancel: () => {
+            setModalVisible(false);
+          },
+        };
+        await getAddress(getAddressOptions);
+      } catch (err) {
+        alert("Wallet is not installed or User canceled");
+      }
+    } else if (walletName === "Unisat") {
+      try {
+        const addresses = (await (
+          window as any
+        ).unisat?.requestAccounts()) as string[];
+        dispatch(
+          walletConnect({
+            address: addresses[0] as string,
+            walletName: "Unisat",
+          })
+        );
+        setModalVisible(false);
+      } catch (err) {
+        alert("Wallet is not installed or User canceled");
+      }
+    }
+  };
 
   return (
     <div className="absolute left-0 top-0 z-20 flex h-screen w-full items-center justify-center bg-black bg-opacity-80">
@@ -55,6 +122,7 @@ const WalletConnectModal = ({
             <button
               key={index}
               className="group flex w-full items-center justify-between rounded-full border-[1px] border-[#EFE9E6] px-10 py-5"
+              onClick={() => void walletConnectBtnClicked(wallet.name)}
             >
               <div className="flex items-center gap-[22px]">
                 <Image src={wallet.imgUrl} alt="" width={54} height={54} />
