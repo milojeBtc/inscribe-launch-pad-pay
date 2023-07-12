@@ -6,7 +6,7 @@ const config = {
   encodedAddressPrefix: "testnet",
   amount: 3,
   mode: "local",
-  // mode: "inscription"
+  price: 30000,
 };
 
 export default config;

@@ -1,14 +1,43 @@
+import axios from "axios";
 import Head from "next/head";
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
+import { useSelector } from "react-redux";
 import Footer from "~/components/layout/Footer";
 import Header from "~/components/layout/Header";
 import WalletConnectModal from "~/components/wallet-connect/WalletConnect Modal";
+import {
+  selectIsAuthenticated,
+  selectWalletName,
+} from "~/components/wallet-connect/walletConnectSlice";
 
 export default function Home() {
   const [walletConnectModalVisible, setWalletConnectModalVisible] =
     useState(false);
+  const isAuthenticated = useSelector(selectIsAuthenticated);
+  const walletName = useSelector(selectWalletName);
+
+  const onMintBtnClicked = async () => {
+    if (!isAuthenticated) return setWalletConnectModalVisible(true);
+    if (walletName === "Unisat") {
+      try {
+        const pubkey = await window.unisat.getPublicKey();
+        const [address] = await window.unisat.getAccounts();
+        const res = await axios.post("/api/inscribe", {
+          recipient: address,
+          buyerPubkey: pubkey,
+        });
+        const signedPsbt = await window.unisat.signPsbt(res.data.psbt);
+        const combineRes = await axios.post("/api/combine", {
+          psbt: res.data.psbt,
+          signedPsbt,
+        });
+      } catch (error) {
+        console.error(error);
+      }
+    }
+  };
 
   return (
     <>
@@ -118,7 +147,10 @@ export default function Home() {
                     </p>
                   </div>
                 </div>
-                <button className="mt-[30px] w-full rounded-full bg-customBlue py-4 font-tomorrow text-[32px] text-specialWhite">
+                <button
+                  className="mt-[30px] w-full rounded-full bg-customBlue py-4 font-tomorrow text-[32px] text-specialWhite"
+                  onClick={() => void onMintBtnClicked()}
+                >
                   MINT
                 </button>
                 <div className="mt-[30px]">

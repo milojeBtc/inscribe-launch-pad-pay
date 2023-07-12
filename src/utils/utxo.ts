@@ -3,6 +3,8 @@ import config from "~/config";
 import { type SecretKey } from "@cmdcode/crypto-utils";
 import axios, { type AxiosError } from "axios";
 import type MockWallet from "./mock-wallet";
+import { type Network } from "bitcoinjs-lib";
+import { getInscriptions } from "./inscription";
 
 interface IUtxo {
   txid: string;
@@ -126,3 +128,21 @@ async function postData(
     }
   }
 }
+
+export const getTransferableUtxos = async (
+  address: string,
+  network: Network
+): Promise<IUtxo[]> => {
+  const transferableUtxos: IUtxo[] = [];
+  const utxos = await getUtxos(address);
+  const inscriptions = await getInscriptions(address, network);
+
+  utxos.forEach((utxo) => {
+    const inscriptionUtxo = inscriptions.find((inscription) => {
+      return inscription.output.includes(utxo.txid);
+    });
+    if (!inscriptionUtxo) transferableUtxos.push(utxo);
+  });
+
+  return transferableUtxos;
+};

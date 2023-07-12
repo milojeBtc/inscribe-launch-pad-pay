@@ -1,105 +1,86 @@
 import type { NextApiRequest, NextApiResponse } from "next";
-import { pushBTCpmt, sendBtcs } from "~/utils/utxo";
-import { type PublicKey, type SecretKey } from "@cmdcode/crypto-utils";
-import { Address, Signer, Tap, Tx, type TxData } from "@cmdcode/tapscript";
-import { Buff } from "@cmdcode/buff-utils";
-import * as fs from "fs";
 import config from "~/config";
 import MockWallet from "~/utils/mock-wallet";
+import { type IInscription, getInscriptions } from "~/utils/inscription";
+import { testnet } from "bitcoinjs-lib/src/networks";
+import adminWallet from "~/utils/admin-wallet";
+import { getTransferableUtxos } from "~/utils/utxo";
+import Bitcoin from "~/utils/bitcoin";
 
 const mockWallet = new MockWallet();
+mockWallet.init();
 
-const handler = async (req: NextApiRequest, res: NextApiResponse) => {
-  const inscriptionId = await inscribe();
-  res.send({ id: inscriptionId });
+interface ExtendedNextApiRequest extends NextApiRequest {
+  body: {
+    recipient: string;
+    buyerPubkey: string;
+  };
+}
+
+const handler = async (req: ExtendedNextApiRequest, res: NextApiResponse) => {
+  const inscriptionUtxos = await getInscriptions(adminWallet.address, testnet);
+  const inscriptionUtxo = inscriptionUtxos[0] as IInscription;
+
+  const [inscriptionHash, inscriptionIndex] = inscriptionUtxo.output.split(
+    ":"
+  ) as [string, string];
+  const inscriptionOwnerPubkey = Buffer.from(adminWallet.publicKey, "hex");
+
+  const buyerPubkey = Buffer.from(req.body.buyerPubkey, "hex");
+  const { address: buyerAddress, output: buyerOutput } = Bitcoin.payments.p2tr({
+    internalPubkey: buyerPubkey.slice(1, 33),
+    network: testnet,
+  });
+  const utxos = await getTransferableUtxos(buyerAddress as string, testnet);
+
+  const psbt = new Bitcoin.Psbt({ network: testnet });
+  psbt.addInputs([
+    {
+      hash: inscriptionHash,
+      index: Number(inscriptionIndex),
+      witnessUtxo: {
+        value: inscriptionUtxo.outputValue,
+        script: adminWallet.output,
+      },
+      tapInternalKey: inscriptionOwnerPubkey.slice(1, 33),
+    },
+  ]);
+
+  let amount = 0;
+  for (const utxo of utxos) {
+    if (amount < config.price + 1000) {
+      amount += utxo.value;
+      psbt.addInput({
+        hash: utxo.txid,
+        index: utxo.vout,
+        witnessUtxo: {
+          value: utxo.value,
+          script: buyerOutput as Buffer,
+        },
+        tapInternalKey: buyerPubkey.slice(1, 33),
+      });
+    }
+  }
+
+  if (amount < config.price + 1000)
+    return res.json({ res: false, msg: "You don't have enough bitcoin" });
+
+  psbt.addOutputs([
+    {
+      value: inscriptionUtxo.outputValue,
+      address: req.body.recipient,
+    },
+    {
+      value: config.price,
+      address: adminWallet.address,
+    },
+    {
+      value: amount - config.price - 1000,
+      address: buyerAddress as string,
+    },
+  ]);
+
+  res.send({ res: true, psbt: psbt.toHex() });
 };
 
 export default handler;
-
-const getInscriptionFee = () => {
-  const imgdata = fs.readFileSync("./generated/svg/1.svg");
-  const marker = Buff.encode("ord");
-  const mimetype = Buff.encode("image/svg+xml");
-
-  const script = [
-    mockWallet.pubkey,
-    "OP_CHECKSIG",
-    "OP_0",
-    "OP_IF",
-    marker,
-    "01",
-    mimetype,
-    "OP_0",
-    imgdata,
-    "OP_ENDIF",
-  ];
-  const tapleaf = Tap.encodeScript(script as any[]);
-  const fee = (tapleaf.length / 4 + config.defaultOutput) * config.txRate;
-  return fee;
-};
-
-const inscribeInscription = async (i: number) => {
-  const imgdata = fs.readFileSync(`./generated/svg/${i}.svg`);
-  const marker = Buff.encode("ord");
-  const mimetype = Buff.encode("image/svg+xml");
-
-  const script = [
-    mockWallet.pubkey,
-    "OP_CHECKSIG",
-    "OP_0",
-    "OP_IF",
-    marker,
-    "01",
-    mimetype,
-    "OP_0",
-    imgdata,
-    "OP_ENDIF",
-  ];
-  const tapleaf = Tap.encodeScript(script as any[]);
-  const [tpubkey, cblock] = Tap.getPubKey(mockWallet.pubkey as PublicKey, {
-    target: tapleaf,
-  });
-  const address = Address.p2tr.fromPubKey(tpubkey, "testnet");
-  const fee = (imgdata.length / 4 + config.defaultOutput) * config.txRate;
-  const txId = await sendBtcs(mockWallet, address, fee);
-
-  const txdata = Tx.create({
-    vin: [
-      {
-        txid: txId,
-        vout: 0,
-        prevout: {
-          value: fee,
-          scriptPubKey: ["OP_1", tpubkey],
-        },
-      },
-    ],
-    vout: [
-      {
-        value: 546,
-        scriptPubKey: Address.toScriptPubKey(config.recipient),
-      },
-    ],
-  });
-
-  const sig = Signer.taproot.sign(mockWallet.seckey as SecretKey, txdata, 0, {
-    extension: tapleaf,
-  });
-  txdata.vin[0].witness = [sig, script as any[], cblock];
-
-  const rawTx = Tx.encode(txdata).hex;
-  const tx = await pushBTCpmt(rawTx);
-  console.log("inscription id", `${tx as string}i0`);
-  return `${tx as string}i0`;
-};
-
-const inscribe = async () => {
-  mockWallet.init();
-  console.log("funding address", mockWallet.fundingAddress);
-  const inscriptionFee = getInscriptionFee();
-  const estimatedFee = (inscriptionFee + 300) * config.amount;
-  console.log("estimatedFee", estimatedFee);
-  const inscriptionId = await inscribeInscription(1);
-  // fs.writeFileSync(`./res.json`, JSON.stringify(data, null, " "));
-  return inscriptionId;
-};
