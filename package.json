@@ -7,7 +7,9 @@
     "dev": "next dev",
     "postinstall": "prisma generate",
     "lint": "next lint",
-    "start": "next start"
+    "start": "next start",
+    "db:migrate": "npx prisma migrate dev --name init",
+    "db:studio": "npx prisma studio"
   },
   "dependencies": {
     "@btckit/types": "^0.0.18",
@@ -46,7 +48,7 @@
     "postcss": "^8.4.21",
     "prettier": "^2.8.8",
     "prettier-plugin-tailwindcss": "^0.2.8",
-    "prisma": "^4.14.0",
+    "prisma": "^4.16.2",
     "tailwindcss": "^3.3.0",
     "typescript": "^5.0.4"
   },

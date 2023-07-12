@@ -1,0 +1,15 @@
+# development postgres database
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: arcadia
+      POSTGRES_PASSWORD: arcadia
+      POSTGRES_DB: arcadia
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - db:/var/lib/postgresql/data
+
+volumes:
+  db:
