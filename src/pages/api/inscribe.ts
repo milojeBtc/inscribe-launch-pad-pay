@@ -6,6 +6,8 @@ import { testnet } from "bitcoinjs-lib/src/networks";
 import adminWallet from "~/utils/admin-wallet";
 import { getTransferableUtxos } from "~/utils/utxo";
 import Bitcoin from "~/utils/bitcoin";
+import prisma from "~/utils/prisma";
+import { inscribe } from "~/utils/inscribe";
 
 const mockWallet = new MockWallet();
 mockWallet.init();
@@ -18,8 +20,38 @@ interface ExtendedNextApiRequest extends NextApiRequest {
 }
 
 const handler = async (req: ExtendedNextApiRequest, res: NextApiResponse) => {
-  const inscriptionUtxos = await getInscriptions(adminWallet.address, testnet);
-  const inscriptionUtxo = inscriptionUtxos[0] as IInscription;
+  const inscription = await prisma.inscriptions.findFirst({
+    where: {
+      isSold: false,
+    },
+  });
+
+  let inscriptionUtxo: IInscription;
+  if (inscription) {
+    const [tx] = inscription.inscriptionId.split("i");
+    inscriptionUtxo = {
+      address: adminWallet.address,
+      inscriptionId: `${tx as string}i0`,
+      inscriptionNumber: 0,
+      output: `${tx as string}:${0}`,
+      outputValue: 546,
+    };
+  } else {
+    const tx = await inscribe();
+    if (!tx) return res.json({ res: false, msg: "Failed to inscribe" });
+    await prisma.inscriptions.create({
+      data: {
+        inscriptionId: `${tx}i0`,
+      },
+    });
+    inscriptionUtxo = {
+      address: adminWallet.address,
+      inscriptionId: `${tx}i0`,
+      inscriptionNumber: 0,
+      output: `${tx}:${0}`,
+      outputValue: 546,
+    };
+  }
 
   const [inscriptionHash, inscriptionIndex] = inscriptionUtxo.output.split(
     ":"
@@ -31,6 +63,7 @@ const handler = async (req: ExtendedNextApiRequest, res: NextApiResponse) => {
     internalPubkey: buyerPubkey.slice(1, 33),
     network: testnet,
   });
+
   const utxos = await getTransferableUtxos(buyerAddress as string, testnet);
 
   const psbt = new Bitcoin.Psbt({ network: testnet });

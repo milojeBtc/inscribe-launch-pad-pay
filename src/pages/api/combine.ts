@@ -2,6 +2,7 @@ import axios from "axios";
 import { type NextApiResponse, type NextApiRequest } from "next";
 import adminWallet from "~/utils/admin-wallet";
 import Bitcoin from "~/utils/bitcoin";
+import prisma from "~/utils/prisma";
 
 interface ExtendedNextApiRequest extends NextApiRequest {
   body: {
@@ -22,8 +23,17 @@ const handler = async (req: ExtendedNextApiRequest, res: NextApiResponse) => {
     txHex
   );
 
-  if (pushTransaction.data)
+  if (pushTransaction.data) {
+    await prisma.inscriptions.update({
+      where: {
+        inscriptionId: `${
+          psbt.txInputs[0]?.hash.reverse().toString("hex") as string
+        }i0`,
+      },
+      data: { isSold: true },
+    });
     return res.status(200).send({ tx: pushTransaction.data, res: true });
+  }
   return res.json({ res: false, msg: "Failed to push transaction" });
 };
 

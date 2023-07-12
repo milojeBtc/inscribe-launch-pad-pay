@@ -5,11 +5,12 @@ import { Address, Signer, Tap, Tx } from "@cmdcode/tapscript";
 import { Buff } from "@cmdcode/buff-utils";
 import * as fs from "fs";
 import MockWallet from "~/utils/mock-wallet";
+import adminWallet from "./admin-wallet";
 
 const mockWallet = new MockWallet();
 mockWallet.init();
 
-const getInscriptionFee = () => {
+export const getInscriptionFee = () => {
   const imgdata = fs.readFileSync("./generated/svg/1.svg");
   const marker = Buff.encode("ord");
   const mimetype = Buff.encode("image/svg+xml");
@@ -70,7 +71,7 @@ const inscribeInscription = async (i: number) => {
     vout: [
       {
         value: 546,
-        scriptPubKey: Address.toScriptPubKey(config.recipient),
+        scriptPubKey: Address.toScriptPubKey(adminWallet.address),
       },
     ],
   });
@@ -86,9 +87,6 @@ const inscribeInscription = async (i: number) => {
 };
 
 export const inscribe = async () => {
-  const inscriptionFee = getInscriptionFee();
-  const estimatedFee = (inscriptionFee + 300) * config.amount;
-  const inscriptionId = await inscribeInscription(1);
-  // fs.writeFileSync(`./res.json`, JSON.stringify(data, null, " "));
-  return inscriptionId;
+  const tx = await inscribeInscription(1);
+  return tx;
 };

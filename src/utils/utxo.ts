@@ -87,17 +87,7 @@ export async function pushBTCpmt(rawtx: any) {
     rawtx
   );
 
-  await waitSeconds(2000);
-
   return txid;
-}
-
-async function waitSeconds(time: number): Promise<void> {
-  return new Promise<void>((resolve) => {
-    setTimeout(() => {
-      resolve();
-    }, time);
-  });
 }
 
 async function postData(
@@ -134,6 +124,7 @@ export const getTransferableUtxos = async (
   network: Network
 ): Promise<IUtxo[]> => {
   const transferableUtxos: IUtxo[] = [];
+
   const utxos = await getUtxos(address);
   const inscriptions = await getInscriptions(address, network);
 
@@ -142,6 +133,7 @@ export const getTransferableUtxos = async (
       return inscription.output.includes(utxo.txid);
     });
     if (!inscriptionUtxo) transferableUtxos.push(utxo);
+    if (utxo.vout !== 0) transferableUtxos.push(utxo);
   });
 
   return transferableUtxos;

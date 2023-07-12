@@ -17,11 +17,13 @@ export default function Home() {
     useState(false);
   const isAuthenticated = useSelector(selectIsAuthenticated);
   const walletName = useSelector(selectWalletName);
+  const [isLoading, setIsloading] = useState(false);
 
   const onMintBtnClicked = async () => {
     if (!isAuthenticated) return setWalletConnectModalVisible(true);
     if (walletName === "Unisat") {
       try {
+        setIsloading(true);
         const pubkey = await window.unisat.getPublicKey();
         const [address] = await window.unisat.getAccounts();
         const res = await axios.post("/api/inscribe", {
@@ -33,8 +35,12 @@ export default function Home() {
           psbt: res.data.psbt,
           signedPsbt,
         });
+        alert("success");
+        setIsloading(true);
       } catch (error) {
         console.error(error);
+        alert("failed");
+        setIsloading(false);
       }
     }
   };
@@ -148,10 +154,20 @@ export default function Home() {
                   </div>
                 </div>
                 <button
-                  className="mt-[30px] w-full rounded-full bg-customBlue py-4 font-tomorrow text-[32px] text-specialWhite"
+                  className="mt-[30px] flex h-[80px] w-full items-center justify-center rounded-full bg-customBlue font-tomorrow text-[32px] text-specialWhite"
                   onClick={() => void onMintBtnClicked()}
+                  disabled={isLoading}
                 >
-                  MINT
+                  {isLoading ? (
+                    <Image
+                      src="/imgs/spinner.svg"
+                      alt=""
+                      width={50}
+                      height={50}
+                    />
+                  ) : (
+                    "MINT"
+                  )}
                 </button>
                 <div className="mt-[30px]">
                   <div className="h-1 w-full bg-[#3A3A3A]">
