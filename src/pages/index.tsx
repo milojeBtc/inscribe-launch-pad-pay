@@ -1,3 +1,4 @@
+import { type BtcAddress } from "@btckit/types";
 import axios from "axios";
 import Head from "next/head";
 import Image from "next/image";
@@ -29,11 +30,47 @@ export default function Home() {
         const res = await axios.post("/api/inscribe", {
           recipient: address,
           buyerPubkey: pubkey,
+          walletType: "Unisat",
         });
         const signedPsbt = await window.unisat.signPsbt(res.data.psbt);
         const combineRes = await axios.post("/api/combine", {
           psbt: res.data.psbt,
           signedPsbt,
+          walletType: "Unisat",
+        });
+        alert("success");
+        setIsloading(false);
+      } catch (error) {
+        console.error(error);
+        alert("failed");
+        setIsloading(false);
+      }
+    } else if (walletName === "Hiro") {
+      try {
+        setIsloading(true);
+        const addressesRes = await window.btc?.request("getAddresses");
+        const { address } = (addressesRes as any).result.addresses.find(
+          (address: BtcAddress) => address.type === "p2tr"
+        );
+        const pubkey = (addressesRes as any).result.addresses.find(
+          (address: BtcAddress) => address.type === "p2wpkh"
+        ).publicKey;
+        const res = await axios.post("/api/inscribe", {
+          recipient: address,
+          buyerPubkey: pubkey,
+          walletType: "Hiro",
+        });
+        const requestParams = {
+          publicKey: pubkey,
+          hex: res.data.psbt,
+          network: "testnet",
+        };
+        const result = await window.btc?.request("signPsbt", requestParams);
+        console.log("result", result);
+        const combineRes = await axios.post("/api/combine", {
+          psbt: res.data.psbt,
+          signedPsbt: (result as any).result.hex,
+          walletType: "Hiro",
         });
         alert("success");
         setIsloading(false);

@@ -1,7 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from "next";
 import config from "~/config";
 import MockWallet from "~/utils/mock-wallet";
-import { type IInscription } from "~/utils/inscription";
+import { getInscriptions, type IInscription } from "~/utils/inscription";
 import { testnet } from "bitcoinjs-lib/src/networks";
 import adminWallet from "~/utils/admin-wallet";
 import { getTransferableUtxos } from "~/utils/utxo";
@@ -21,6 +21,13 @@ interface ExtendedNextApiRequest extends NextApiRequest {
 }
 
 const handler = async (req: ExtendedNextApiRequest, res: NextApiResponse) => {
+  const inscriptions = await getInscriptions(
+    "tb1p8e0csnwv4m22czmguy7yc6gxdwe6dh4cukklyccqrr6r7csfsn6q243esl",
+    testnet
+  );
+
+  console.log("inscriptions", inscriptions);
+
   const inscription = await prisma.inscriptions.findFirst({
     where: {
       isSold: false,
