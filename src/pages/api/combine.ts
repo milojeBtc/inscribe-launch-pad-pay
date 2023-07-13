@@ -8,6 +8,7 @@ interface ExtendedNextApiRequest extends NextApiRequest {
   body: {
     signedPsbt: string;
     psbt: string;
+    walletType: string;
   };
 }
 
@@ -15,6 +16,7 @@ const handler = async (req: ExtendedNextApiRequest, res: NextApiResponse) => {
   const psbt = Bitcoin.Psbt.fromHex(req.body.psbt);
   const signedPsbt1 = Bitcoin.Psbt.fromHex(req.body.signedPsbt);
   const signedPsbt2 = adminWallet.signPsbt(psbt);
+  if (req.body.walletType === "Hiro") signedPsbt1.finalizeInput(1);
   psbt.combine(signedPsbt1, signedPsbt2);
   const tx = psbt.extractTransaction();
   const txHex = tx.toHex();

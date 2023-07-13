@@ -6,7 +6,7 @@ import { useState } from "react";
 import { useSelector } from "react-redux";
 import Footer from "~/components/layout/Footer";
 import Header from "~/components/layout/Header";
-import WalletConnectModal from "~/components/wallet-connect/WalletConnect Modal";
+import WalletConnectModal from "~/components/wallet-connect/WalletConnectModal";
 import {
   selectIsAuthenticated,
   selectWalletName,
@@ -36,7 +36,7 @@ export default function Home() {
           signedPsbt,
         });
         alert("success");
-        setIsloading(true);
+        setIsloading(false);
       } catch (error) {
         console.error(error);
         alert("failed");
