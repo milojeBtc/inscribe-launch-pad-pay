@@ -1,10 +1,12 @@
 import { type BtcAddress } from "@btckit/types";
 import axios from "axios";
+import { payments } from "bitcoinjs-lib";
 import Head from "next/head";
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import { useSelector } from "react-redux";
+import { AddressPurposes, getAddress, signTransaction } from "sats-connect";
 import Footer from "~/components/layout/Footer";
 import Header from "~/components/layout/Header";
 import WalletConnectModal from "~/components/wallet-connect/WalletConnectModal";
@@ -71,6 +73,65 @@ export default function Home() {
           psbt: res.data.psbt,
           signedPsbt: (result as any).result.hex,
           walletType: "Hiro",
+        });
+        alert("success");
+        setIsloading(false);
+      } catch (error) {
+        console.error(error);
+        alert("failed");
+        setIsloading(false);
+      }
+    } else if (walletName === "Xverse") {
+      try {
+        let pubkey, address, paymentAddress;
+        setIsloading(true);
+        const getAddressOptions = {
+          payload: {
+            purposes: [AddressPurposes.ORDINALS, AddressPurposes.PAYMENT],
+            message: "Address for receiving Ordinals and payments",
+            network: {
+              type: "Testnet",
+            },
+          },
+          onFinish: (response: any) => {
+            address = response.addresses[0].address;
+            pubkey = response.addresses[1].publicKey;
+            paymentAddress = response.addresses[1].address;
+          },
+          onCancel: () => alert("Request canceled"),
+        };
+        await getAddress(getAddressOptions);
+        const res = await axios.post("/api/inscribe", {
+          recipient: address,
+          buyerPubkey: pubkey,
+          walletType: "Xverse",
+        });
+        let signedPsbt;
+        const signPsbtOptions = {
+          payload: {
+            network: {
+              type: "Testnet",
+            },
+            message: "Sign Transaction",
+            psbtBase64: res.data.psbt,
+            broadcast: false,
+            inputsToSign: [
+              {
+                address: paymentAddress,
+                signingIndexes: [1],
+              },
+            ],
+          },
+          onFinish: (response: any) => {
+            signedPsbt = response.psbtBase64;
+          },
+          onCancel: () => alert("Canceled"),
+        };
+        await signTransaction(signPsbtOptions);
+        const combineRes = await axios.post("/api/combine", {
+          psbt: res.data.psbt,
+          signedPsbt,
+          walletType: "Xverse",
         });
         alert("success");
         setIsloading(false);

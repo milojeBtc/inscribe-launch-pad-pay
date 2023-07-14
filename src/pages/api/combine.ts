@@ -13,13 +13,24 @@ interface ExtendedNextApiRequest extends NextApiRequest {
 }
 
 const handler = async (req: ExtendedNextApiRequest, res: NextApiResponse) => {
-  const psbt = Bitcoin.Psbt.fromHex(req.body.psbt);
-  const signedPsbt1 = Bitcoin.Psbt.fromHex(req.body.signedPsbt);
-  const signedPsbt2 = adminWallet.signPsbt(psbt);
-  if (req.body.walletType === "Hiro") signedPsbt1.finalizeInput(1);
-  psbt.combine(signedPsbt1, signedPsbt2);
-  const tx = psbt.extractTransaction();
-  const txHex = tx.toHex();
+  let txHex, psbt;
+  if (req.body.walletType === "Xverse") {
+    psbt = Bitcoin.Psbt.fromBase64(req.body.psbt);
+    const signedPsbt1 = Bitcoin.Psbt.fromBase64(req.body.signedPsbt);
+    signedPsbt1.finalizeInput(1);
+    const signedPsbt2 = adminWallet.signPsbt(psbt);
+    psbt.combine(signedPsbt1, signedPsbt2);
+    const tx = psbt.extractTransaction();
+    txHex = tx.toHex();
+  } else {
+    psbt = Bitcoin.Psbt.fromHex(req.body.psbt);
+    const signedPsbt1 = Bitcoin.Psbt.fromHex(req.body.signedPsbt);
+    const signedPsbt2 = adminWallet.signPsbt(psbt);
+    if (req.body.walletType === "Hiro") signedPsbt1.finalizeInput(1);
+    psbt.combine(signedPsbt1, signedPsbt2);
+    const tx = psbt.extractTransaction();
+    txHex = tx.toHex();
+  }
   const pushTransaction = await axios.post(
     "https://mempool.space/testnet/api/tx",
     txHex

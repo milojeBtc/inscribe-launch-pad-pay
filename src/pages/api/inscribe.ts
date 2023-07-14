@@ -8,6 +8,7 @@ import { getTransferableUtxos } from "~/utils/utxo";
 import Bitcoin from "~/utils/bitcoin";
 import prisma from "~/utils/prisma";
 import { inscribe } from "~/utils/inscribe";
+import axios from "axios";
 
 const mockWallet = new MockWallet();
 mockWallet.init();
@@ -21,13 +22,6 @@ interface ExtendedNextApiRequest extends NextApiRequest {
 }
 
 const handler = async (req: ExtendedNextApiRequest, res: NextApiResponse) => {
-  const inscriptions = await getInscriptions(
-    "tb1p8e0csnwv4m22czmguy7yc6gxdwe6dh4cukklyccqrr6r7csfsn6q243esl",
-    testnet
-  );
-
-  console.log("inscriptions", inscriptions);
-
   const inscription = await prisma.inscriptions.findFirst({
     where: {
       isSold: false,
@@ -83,6 +77,17 @@ const handler = async (req: ExtendedNextApiRequest, res: NextApiResponse) => {
     });
     buyerAddress = address;
     buyerOutput = output;
+  } else if (req.body.walletType === "Xverse") {
+    const p2wpkh = Bitcoin.payments.p2wpkh({
+      pubkey: buyerPubkey,
+      network: testnet,
+    });
+    const { address, redeem } = Bitcoin.payments.p2sh({
+      redeem: p2wpkh,
+      network: testnet,
+    });
+    buyerAddress = address;
+    buyerOutput = redeem?.output;
   }
 
   const utxos = await getTransferableUtxos(buyerAddress as string, testnet);
@@ -130,6 +135,21 @@ const handler = async (req: ExtendedNextApiRequest, res: NextApiResponse) => {
         });
       }
     }
+  } else if (req.body.walletType === "Xverse") {
+    for (const utxo of utxos) {
+      if (amount < config.price + 1000) {
+        amount += utxo.value;
+        const { data } = await axios.get(
+          `https://mempool.space/testnet/api/tx/${utxo.txid}/hex`
+        );
+        psbt.addInput({
+          hash: utxo.txid,
+          index: utxo.vout,
+          redeemScript: buyerOutput,
+          nonWitnessUtxo: Buffer.from(data, "hex"),
+        });
+      }
+    }
   }
 
   if (amount < config.price + 1000)
@@ -149,6 +169,9 @@ const handler = async (req: ExtendedNextApiRequest, res: NextApiResponse) => {
       address: buyerAddress as string,
     },
   ]);
+
+  if (req.body.walletType === "Xverse")
+    return res.send({ res: true, psbt: psbt.toBase64() });
 
   res.send({ res: true, psbt: psbt.toHex() });
 };
