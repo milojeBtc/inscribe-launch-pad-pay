@@ -1,8 +1,4 @@
-import { Address, Signer, Tx } from "@cmdcode/tapscript";
-import config from "~/config";
-import { type SecretKey } from "@cmdcode/crypto-utils";
 import axios, { type AxiosError } from "axios";
-import type MockWallet from "./mock-wallet";
 import { type Network } from "bitcoinjs-lib";
 import { getInscriptions } from "./inscription";
 
@@ -13,7 +9,7 @@ interface IUtxo {
 }
 
 export const getUtxos = async (address: string): Promise<IUtxo[]> => {
-  const url = `https://mempool.space/${config.mempoolNetwork}api/address/${address}/utxo`;
+  const url = `https://mempool.space/testnet/api/address/${address}/utxo`;
   const res = await axios.get(url);
   const utxos: IUtxo[] = [];
   res.data.forEach((utxoData: any) => {
@@ -26,66 +22,8 @@ export const getUtxos = async (address: string): Promise<IUtxo[]> => {
   return utxos;
 };
 
-export async function sendBtcs(
-  mockWallet: MockWallet,
-  address: string,
-  amount: number
-): Promise<string> {
-  const utxos = await getUtxos(mockWallet.fundingAddress as string);
-  if (utxos.length === 0) throw new Error("Can not get utxos from address");
-  const utxo = utxos.find((item) => item.value >= amount + 300);
-  if (!utxo) throw new Error("you don't have enough balance for inscribing");
-  const tx = Tx.create({
-    vin: [
-      {
-        txid: utxo.txid,
-        vout: utxo.vout,
-        prevout: {
-          value: utxo.value,
-          scriptPubKey: ["OP_1", mockWallet.init_tapkey as string],
-        },
-      },
-    ],
-    vout: [
-      {
-        value: amount,
-        scriptPubKey: ["OP_1", Address.p2tr.decode(address).hex],
-      },
-      {
-        value: utxo.value - 300 - amount,
-        scriptPubKey: [
-          "OP_1",
-          Address.p2tr.decode(mockWallet.fundingAddress as string).hex,
-        ],
-      },
-    ],
-  });
-
-  const signature = Signer.taproot.sign(
-    (mockWallet.seckey as SecretKey).raw,
-    tx,
-    0,
-    {
-      extension: mockWallet.init_leaf,
-    }
-  );
-  tx.vin[0].witness = [
-    signature.hex,
-    mockWallet.init_script as any[],
-    mockWallet.init_cblock as string,
-  ];
-
-  const rawTx = Tx.encode(tx).hex;
-  const txId: string = (await pushBTCpmt(rawTx)) as string;
-  if (!txId) throw new Error("Failed to send btcs");
-  return txId;
-}
-
 export async function pushBTCpmt(rawtx: any) {
-  const txid = await postData(
-    "https://mempool.space/" + config.mempoolNetwork + "api/tx",
-    rawtx
-  );
+  const txid = await postData("https://mempool.space/testnet/api/tx", rawtx);
 
   return txid;
 }

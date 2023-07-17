@@ -1,67 +1,21 @@
-import type { NextApiRequest, NextApiResponse } from "next";
-import config from "~/config";
-import MockWallet from "~/utils/mock-wallet";
-import { getInscriptions, type IInscription } from "~/utils/inscription";
-import { testnet } from "bitcoinjs-lib/src/networks";
-import adminWallet from "~/utils/admin-wallet";
-import { getTransferableUtxos } from "~/utils/utxo";
-import Bitcoin from "~/utils/bitcoin";
-import prisma from "~/utils/prisma";
-import { inscribe } from "~/utils/inscribe";
 import axios from "axios";
-
-const mockWallet = new MockWallet();
-mockWallet.init();
+import { testnet } from "bitcoinjs-lib/src/networks";
+import type { NextApiResponse, NextApiRequest } from "next";
+import { type WalletTypes } from "~/types/type";
+import Bitcoin from "~/utils/bitcoin";
+import { getTransferableUtxos } from "~/utils/utxo";
 
 interface ExtendedNextApiRequest extends NextApiRequest {
   body: {
+    senderPubkey: string;
+    walletType: WalletTypes;
     recipient: string;
-    buyerPubkey: string;
-    walletType: string;
+    price: number;
   };
 }
 
 const handler = async (req: ExtendedNextApiRequest, res: NextApiResponse) => {
-  const inscription = await prisma.inscriptions.findFirst({
-    where: {
-      isSold: false,
-    },
-  });
-
-  let inscriptionUtxo: IInscription;
-  if (inscription) {
-    const [tx] = inscription.inscriptionId.split("i");
-    inscriptionUtxo = {
-      address: adminWallet.address,
-      inscriptionId: `${tx as string}i0`,
-      inscriptionNumber: 0,
-      output: `${tx as string}:${0}`,
-      outputValue: 546,
-    };
-  } else {
-    const tx = await inscribe();
-    if (!tx) return res.json({ res: false, msg: "Failed to inscribe" });
-    await prisma.inscriptions.create({
-      data: {
-        inscriptionId: `${tx}i0`,
-      },
-    });
-    inscriptionUtxo = {
-      address: adminWallet.address,
-      inscriptionId: `${tx}i0`,
-      inscriptionNumber: 0,
-      output: `${tx}:${0}`,
-      outputValue: 546,
-    };
-  }
-
-  const [inscriptionHash, inscriptionIndex] = inscriptionUtxo.output.split(
-    ":"
-  ) as [string, string];
-  const inscriptionOwnerPubkey = Buffer.from(adminWallet.publicKey, "hex");
-
-  const buyerPubkey = Buffer.from(req.body.buyerPubkey, "hex");
-
+  const buyerPubkey = Buffer.from(req.body.senderPubkey, "hex");
   let buyerAddress, buyerOutput;
   if (req.body.walletType === "Hiro") {
     const { address, output } = Bitcoin.payments.p2wpkh({
@@ -91,24 +45,12 @@ const handler = async (req: ExtendedNextApiRequest, res: NextApiResponse) => {
   }
 
   const utxos = await getTransferableUtxos(buyerAddress as string, testnet);
-
   const psbt = new Bitcoin.Psbt({ network: testnet });
-  psbt.addInputs([
-    {
-      hash: inscriptionHash,
-      index: Number(inscriptionIndex),
-      witnessUtxo: {
-        value: inscriptionUtxo.outputValue,
-        script: adminWallet.output,
-      },
-      tapInternalKey: inscriptionOwnerPubkey.slice(1, 33),
-    },
-  ]);
 
   let amount = 0;
   if (req.body.walletType === "Hiro") {
     for (const utxo of utxos) {
-      if (amount < config.price + 1000) {
+      if (amount < req.body.price + 1000) {
         amount += utxo.value;
         psbt.addInput({
           hash: utxo.txid,
@@ -122,7 +64,7 @@ const handler = async (req: ExtendedNextApiRequest, res: NextApiResponse) => {
     }
   } else if (req.body.walletType === "Unisat") {
     for (const utxo of utxos) {
-      if (amount < config.price + 1000) {
+      if (amount < req.body.price + 1000) {
         amount += utxo.value;
         psbt.addInput({
           hash: utxo.txid,
@@ -137,7 +79,7 @@ const handler = async (req: ExtendedNextApiRequest, res: NextApiResponse) => {
     }
   } else if (req.body.walletType === "Xverse") {
     for (const utxo of utxos) {
-      if (amount < config.price + 1000) {
+      if (amount < req.body.price + 1000) {
         amount += utxo.value;
         const { data } = await axios.get(
           `https://mempool.space/testnet/api/tx/${utxo.txid}/hex`
@@ -152,20 +94,16 @@ const handler = async (req: ExtendedNextApiRequest, res: NextApiResponse) => {
     }
   }
 
-  if (amount < config.price + 1000)
+  if (amount < req.body.price + 1000)
     return res.json({ res: false, msg: "You don't have enough bitcoin" });
 
   psbt.addOutputs([
     {
-      value: inscriptionUtxo.outputValue,
+      value: req.body.price,
       address: req.body.recipient,
     },
     {
-      value: config.price,
-      address: adminWallet.address,
-    },
-    {
-      value: amount - config.price - 1000,
+      value: amount - req.body.price - 1000,
       address: buyerAddress as string,
     },
   ]);
@@ -173,7 +111,7 @@ const handler = async (req: ExtendedNextApiRequest, res: NextApiResponse) => {
   if (req.body.walletType === "Xverse")
     return res.send({ res: true, psbt: psbt.toBase64() });
 
-  res.send({ res: true, psbt: psbt.toHex() });
+  return res.send({ res: true, psbt: psbt.toHex() });
 };
 
 export default handler;

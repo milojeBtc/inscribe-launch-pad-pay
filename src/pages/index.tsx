@@ -1,6 +1,5 @@
 import { type BtcAddress } from "@btckit/types";
 import axios from "axios";
-import { payments } from "bitcoinjs-lib";
 import Head from "next/head";
 import Image from "next/image";
 import Link from "next/link";
@@ -14,6 +13,10 @@ import {
   selectIsAuthenticated,
   selectWalletName,
 } from "~/components/wallet-connect/walletConnectSlice";
+
+const adminAddress: string = process.env
+  .NEXT_PUBLIC_ADMIN_WALLET_ADDRESS as string;
+const price = 30000;
 
 export default function Home() {
   const [walletConnectModalVisible, setWalletConnectModalVisible] =
@@ -29,17 +32,13 @@ export default function Home() {
         setIsloading(true);
         const pubkey = await window.unisat.getPublicKey();
         const [address] = await window.unisat.getAccounts();
-        const res = await axios.post("/api/inscribe", {
-          recipient: address,
-          buyerPubkey: pubkey,
+        const res = await axios.post("/api/payment-psbt", {
+          senderPubkey: pubkey,
           walletType: "Unisat",
+          recipient: adminAddress,
+          price,
         });
         const signedPsbt = await window.unisat.signPsbt(res.data.psbt);
-        const combineRes = await axios.post("/api/combine", {
-          psbt: res.data.psbt,
-          signedPsbt,
-          walletType: "Unisat",
-        });
         alert("success");
         setIsloading(false);
       } catch (error) {
@@ -57,10 +56,11 @@ export default function Home() {
         const pubkey = (addressesRes as any).result.addresses.find(
           (address: BtcAddress) => address.type === "p2wpkh"
         ).publicKey;
-        const res = await axios.post("/api/inscribe", {
-          recipient: address,
-          buyerPubkey: pubkey,
+        const res = await axios.post("/api/payment-psbt", {
+          senderPubkey: pubkey,
           walletType: "Hiro",
+          recipient: adminAddress,
+          price,
         });
         const requestParams = {
           publicKey: pubkey,
@@ -68,12 +68,6 @@ export default function Home() {
           network: "testnet",
         };
         const result = await window.btc?.request("signPsbt", requestParams);
-        console.log("result", result);
-        const combineRes = await axios.post("/api/combine", {
-          psbt: res.data.psbt,
-          signedPsbt: (result as any).result.hex,
-          walletType: "Hiro",
-        });
         alert("success");
         setIsloading(false);
       } catch (error) {
@@ -101,10 +95,11 @@ export default function Home() {
           onCancel: () => alert("Request canceled"),
         };
         await getAddress(getAddressOptions);
-        const res = await axios.post("/api/inscribe", {
-          recipient: address,
-          buyerPubkey: pubkey,
+        const res = await axios.post("/api/payment-psbt", {
+          senderPubkey: pubkey,
           walletType: "Xverse",
+          recipient: adminAddress,
+          price,
         });
         let signedPsbt;
         const signPsbtOptions = {
@@ -118,7 +113,7 @@ export default function Home() {
             inputsToSign: [
               {
                 address: paymentAddress,
-                signingIndexes: [1],
+                signingIndexes: [0],
               },
             ],
           },
@@ -128,12 +123,6 @@ export default function Home() {
           onCancel: () => alert("Canceled"),
         };
         await signTransaction(signPsbtOptions);
-        const combineRes = await axios.post("/api/combine", {
-          psbt: res.data.psbt,
-          signedPsbt,
-          walletType: "Xverse",
-        });
-        alert("success");
         setIsloading(false);
       } catch (error) {
         console.error(error);
