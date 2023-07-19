@@ -55,7 +55,7 @@ const WalletConnectModal = ({
             purposes: [AddressPurposes.ORDINALS],
             message: "Address for receiving Ordinals",
             network: {
-              type: "Testnet",
+              type: "Mainnet",
             },
           },
           onFinish: (response: GetAddressResponse) => {
