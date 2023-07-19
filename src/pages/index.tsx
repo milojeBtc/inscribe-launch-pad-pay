@@ -2,8 +2,7 @@ import { type BtcAddress } from "@btckit/types";
 import axios from "axios";
 import Head from "next/head";
 import Image from "next/image";
-import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
 import { AddressPurposes, getAddress, signTransaction } from "sats-connect";
 import Footer from "~/components/layout/Footer";
@@ -13,10 +12,14 @@ import {
   selectIsAuthenticated,
   selectWalletName,
 } from "~/components/wallet-connect/walletConnectSlice";
+import { TotalAmount, WhiteList } from "~/config";
+import { isWhiteListed } from "~/utils/whitelist";
 
 const adminAddress: string = process.env
   .NEXT_PUBLIC_ADMIN_WALLET_ADDRESS as string;
 const price = 30000;
+const apiUrl = process.env.NEXT_PUBLIC_API_URL as string;
+const createPsbtApi = process.env.NEXT_PUBLIC_CREATE_PSBT_API as string;
 
 export default function Home() {
   const [walletConnectModalVisible, setWalletConnectModalVisible] =
@@ -24,6 +27,36 @@ export default function Home() {
   const isAuthenticated = useSelector(selectIsAuthenticated);
   const walletName = useSelector(selectWalletName);
   const [isLoading, setIsloading] = useState(false);
+  const [mintedCount, setMintedCount] = useState(0);
+  const [ogMintTime, setOgMintTime] = useState(0);
+  const [currentTime, setCurrentTime] = useState(0);
+
+  useEffect(() => {
+    const currentTimeString = new Date().toUTCString();
+    const currentTime = Date.parse(currentTimeString);
+    const oGMintTIme = Date.parse("19 Jul 2023 18:00:00 GMT");
+    setCurrentTime(currentTime);
+    setOgMintTime(oGMintTIme);
+  }, []);
+
+  useEffect(() => {
+    if (currentTime) setTimeout(() => setCurrentTime(currentTime + 1000), 1000);
+  }, [currentTime]);
+
+  useEffect(() => {
+    setInterval(() => {
+      void (async () => {
+        try {
+          const res = await axios.get(
+            process.env.NEXT_PUBLIC_CREATE_TOTAL_COUNT_API as string
+          );
+          setMintedCount(res.data.count);
+        } catch (error) {
+          console.error(error);
+        }
+      })();
+    }, 500);
+  }, []);
 
   const onMintBtnClicked = async () => {
     if (!isAuthenticated) return setWalletConnectModalVisible(true);
@@ -32,13 +65,26 @@ export default function Home() {
         setIsloading(true);
         const pubkey = await window.unisat.getPublicKey();
         const [address] = await window.unisat.getAccounts();
-        const res = await axios.post("/api/payment-psbt", {
+        if (
+          !(
+            currentTime < ogMintTime + 1000 * 3600 &&
+            isWhiteListed(WhiteList, address)
+          )
+        ) {
+          setIsloading(false);
+          return alert("You are not whitelisted");
+        }
+        const res = await axios.post(createPsbtApi, {
           senderPubkey: pubkey,
           walletType: "Unisat",
           recipient: adminAddress,
           price,
         });
         const signedPsbt = await window.unisat.signPsbt(res.data.psbt);
+        const sendPsbt = await axios.post(apiUrl, {
+          psbtHex: signedPsbt,
+          walletType: walletName,
+        });
         alert("success");
         setIsloading(false);
       } catch (error) {
@@ -53,10 +99,19 @@ export default function Home() {
         const { address } = (addressesRes as any).result.addresses.find(
           (address: BtcAddress) => address.type === "p2tr"
         );
+        if (
+          !(
+            currentTime < ogMintTime + 1000 * 3600 &&
+            isWhiteListed(WhiteList, address)
+          )
+        ) {
+          setIsloading(false);
+          return alert("You are not whitelisted");
+        }
         const pubkey = (addressesRes as any).result.addresses.find(
           (address: BtcAddress) => address.type === "p2wpkh"
         ).publicKey;
-        const res = await axios.post("/api/payment-psbt", {
+        const res = await axios.post(createPsbtApi, {
           senderPubkey: pubkey,
           walletType: "Hiro",
           recipient: adminAddress,
@@ -68,6 +123,10 @@ export default function Home() {
           network: "testnet",
         };
         const result = await window.btc?.request("signPsbt", requestParams);
+        const sendPsbt = await axios.post(apiUrl, {
+          psbtHex: (result as any).result.hex,
+          walletType: walletName,
+        });
         alert("success");
         setIsloading(false);
       } catch (error) {
@@ -95,7 +154,16 @@ export default function Home() {
           onCancel: () => alert("Request canceled"),
         };
         await getAddress(getAddressOptions);
-        const res = await axios.post("/api/payment-psbt", {
+        if (
+          !(
+            currentTime < ogMintTime + 1000 * 3600 &&
+            isWhiteListed(WhiteList, address)
+          )
+        ) {
+          setIsloading(false);
+          return alert("You are not whitelisted");
+        }
+        const res = await axios.post(createPsbtApi, {
           senderPubkey: pubkey,
           walletType: "Xverse",
           recipient: adminAddress,
@@ -113,7 +181,6 @@ export default function Home() {
             inputsToSign: [
               {
                 address: paymentAddress,
-                signingIndexes: [0],
               },
             ],
           },
@@ -123,6 +190,10 @@ export default function Home() {
           onCancel: () => alert("Canceled"),
         };
         await signTransaction(signPsbtOptions);
+        const sendPsbt = await axios.post(apiUrl, {
+          psbtHex: signedPsbt,
+          walletType: walletName,
+        });
         setIsloading(false);
       } catch (error) {
         console.error(error);
@@ -170,10 +241,12 @@ export default function Home() {
                       height="69"
                       className="mt-3"
                     />
-                    <p className="text-[80px] uppercase text-white">ARCADIA</p>
+                    <p className="text-[40px] uppercase text-white">
+                      BTC Brawlers
+                    </p>
                   </div>
                   <p className="rounded border-[1px] border-[#353535] bg-[#1E1E1E] px-2.5 py-1.5 font-tomorrow text-[22px] leading-6 text-white">
-                    TOTAL ITEMS 2000
+                    TOTAL ITEMS {TotalAmount}
                   </p>
                   <div className="flex items-center gap-[18px]">
                     <Image
@@ -197,33 +270,59 @@ export default function Home() {
                   </div>
                 </div>
                 <p className="font-tomorrow text-[22px] leading-[30px] text-specialWhite">
-                  Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed
-                  do eiusmod tempor incididunt ut labore et dolore magna aliqua.
-                  Ut enim ad minim veniam, quis nostrud exercitation ullamco
-                  laboris nisi ut aliquip ex ea commodo consequat.
-                  <Link href="" className="ml-5 text-customBlue">
-                    Read More
-                  </Link>
+                  BTC Brawlers is a 333 Genesis Collection and entry into the
+                  Brawlers Metaverse, stored on Bitcoin&#39;s Blocks 9 and 78
+                  Inspired by classic Nintendo games like Mike Tyson&#39;s
+                  Punch-Out, Street Fighter, and Double Dragon. Holders of the
+                  collection receive exclusive Fighter Card Airdrops created by
+                  https://twitter.com/agznft and Cornermen used to boost points.
+                  Earn $SPAR points, upgrade, and build the ultimate champion!
                 </p>
               </div>
               <div>
                 <div className="mt-[70px] rounded-[5px] border-[1px] border-[#353535] bg-[#1E1E1E] px-14 py-10">
                   <div className="flex w-full items-center justify-between">
                     <p className="text-[35px] font-bold uppercase text-[#444]">
-                      Public
+                      {currentTime > ogMintTime + 1000 * 3600 ? "PUBLIC" : "OG"}
                     </p>
                     <div className="flex items-center gap-[25px]">
                       <p className="text-[35px] uppercase text-customBlue">
-                        STARTS IN
+                        {ogMintTime > currentTime ? "STARTS IN" : "Started"}
                       </p>
                       <p className="text-[60px] uppercase leading-[60px] text-white">
-                        02
+                        {Math.floor(
+                          (ogMintTime - currentTime) / (1000 * 3600)
+                        ) < 0
+                          ? 0
+                          : Math.floor(
+                              (ogMintTime - currentTime) / (1000 * 3600)
+                            ).toLocaleString("en-US", {
+                              minimumIntegerDigits: 2,
+                              useGrouping: false,
+                            })}
                       </p>
                       <p className="text-[60px] uppercase leading-[60px] text-white">
-                        10
+                        {Math.floor(
+                          (((ogMintTime - currentTime) / 1000) % 3600) / 60
+                        ) < 0
+                          ? 0
+                          : Math.floor(
+                              (((ogMintTime - currentTime) / 1000) % 3600) / 60
+                            ).toLocaleString("en-US", {
+                              minimumIntegerDigits: 2,
+                              useGrouping: false,
+                            })}
                       </p>
                       <p className="text-[60px] uppercase leading-[60px] text-white">
-                        47
+                        {Math.floor(((ogMintTime - currentTime) / 1000) % 60) <
+                        0
+                          ? 0
+                          : Math.floor(
+                              ((ogMintTime - currentTime) / 1000) % 60
+                            ).toLocaleString("en-US", {
+                              minimumIntegerDigits: 2,
+                              useGrouping: false,
+                            })}
                       </p>
                     </div>
                   </div>
@@ -236,14 +335,14 @@ export default function Home() {
                       className="mt-2"
                     />
                     <p className="font-tomorrow text-[40px] leading-10 text-specialWhite">
-                      0.0055 BTC
+                      0.0011 BTC + FEES
                     </p>
                   </div>
                 </div>
                 <button
                   className="mt-[30px] flex h-[80px] w-full items-center justify-center rounded-full bg-customBlue font-tomorrow text-[32px] text-specialWhite"
                   onClick={() => void onMintBtnClicked()}
-                  disabled={isLoading}
+                  disabled={isLoading || ogMintTime > currentTime}
                 >
                   {isLoading ? (
                     <Image
@@ -258,11 +357,18 @@ export default function Home() {
                 </button>
                 <div className="mt-[30px]">
                   <div className="h-1 w-full bg-[#3A3A3A]">
-                    <div className="h-full w-[26%] bg-customBlue" />
+                    <div
+                      className={`h-full w-[${Math.floor(
+                        (mintedCount / TotalAmount) * 100
+                      )}%] bg-customBlue`}
+                    />
                   </div>
                   <div className="mt-1.5 flex w-full justify-between font-tomorrow text-[20px] leading-10 text-white">
                     <p>TOTAL MINTED</p>
-                    <p>1% (20/2000)</p>
+                    <p>
+                      {(mintedCount / TotalAmount).toFixed(2)}% ({mintedCount}/
+                      {TotalAmount})
+                    </p>
                   </div>
                 </div>
               </div>

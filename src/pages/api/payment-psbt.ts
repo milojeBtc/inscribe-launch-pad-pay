@@ -44,6 +44,8 @@ const handler = async (req: ExtendedNextApiRequest, res: NextApiResponse) => {
     buyerOutput = redeem?.output;
   }
 
+  console.log("buyerAddress", buyerAddress);
+
   const utxos = await getTransferableUtxos(buyerAddress as string, testnet);
   const psbt = new Bitcoin.Psbt({ network: testnet });
 
@@ -78,12 +80,14 @@ const handler = async (req: ExtendedNextApiRequest, res: NextApiResponse) => {
       }
     }
   } else if (req.body.walletType === "Xverse") {
+    console.log("utxos", utxos);
     for (const utxo of utxos) {
       if (amount < req.body.price + 1000) {
         amount += utxo.value;
         const { data } = await axios.get(
           `https://mempool.space/testnet/api/tx/${utxo.txid}/hex`
         );
+        console.log("utxo.txid", utxo.txid);
         psbt.addInput({
           hash: utxo.txid,
           index: utxo.vout,

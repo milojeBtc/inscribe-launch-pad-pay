@@ -71,7 +71,7 @@ export const getTransferableUtxos = async (
       return inscription.output.includes(utxo.txid);
     });
     if (!inscriptionUtxo) transferableUtxos.push(utxo);
-    if (utxo.vout !== 0) transferableUtxos.push(utxo);
+    else if (utxo.vout !== 0) transferableUtxos.push(utxo);
   });
 
   return transferableUtxos;
